@@ -45,11 +45,7 @@ new Mockup[类](){
 
 ```scala
 @Singleton
-class UserService @Inject()(
-  conf: Configuration,
-  userDao: UserDao,
-  wsClient: WSClient,
-  logUrlCache: AsyncCacheApi)(implicit ec: ExecutionContext) {
+class UserService @Inject()()(implicit ec: ExecutionContext) {
 
   def addUser(userId: String): Future[Boolean] = {
     userDao.insert(userId).map { res =>
@@ -96,9 +92,6 @@ import base.BaseSuite
 import com.typesafe.config.ConfigFactory
 import dao.UserDao
 import mock.UserServiceMock
-import play.api.Configuration
-import play.api.cache.AsyncCacheApi
-import play.api.libs.ws.WSClient
 import scala.concurrent.ExecutionContext.Implicits.global
 
 class UserServiceTest  extends BaseSuite {
@@ -110,11 +103,8 @@ class UserServiceTest  extends BaseSuite {
   }
 
   private def initService(): Unit = {
-    val configuration: Configuration = Configuration(ConfigFactory.load())
-    val userDao = fakeApp.injector.instanceOf(classOf[UserDao])
-    val ws = fakeApp.injector.instanceOf(classOf[WSClient])
-    val logUrlCache = fakeApp.injector.instanceOf(classOf[AsyncCacheApi])
-    userService = new UserService(configuration,userDao, ws,logUrlCache)  //
+  
+    userService = new UserService()  //
   }
   
   test("Userservice first mock example") {

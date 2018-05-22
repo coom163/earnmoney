@@ -4,8 +4,6 @@
 
 网上有很多关于jmockit的案例，但是大多是基于java的教程。本文是基于scala来编写jmockit的测试用例。首先需要在sbt的工程中添加以下两个依赖。
 
-![9](./picture/9.PNG)
-
 ```
 "org.jmockit" % "jmockit" % "1.18"
 "de.leanovate.play-mockws" %% "play-mockws" % "2.6.2"
@@ -134,8 +132,6 @@ class UserServiceTest  extends BaseSuite {
 ```
 
 执行结果如下：
-
-![10](./picture/10.PNG)
 
 ```
 Testing started at 14:11 ...

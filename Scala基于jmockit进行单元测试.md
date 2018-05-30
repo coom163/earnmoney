@@ -4,6 +4,8 @@
 
 网上有很多关于jmockit的案例，但是大多是基于java的教程。本文是基于scala来编写jmockit的测试用例。首先需要在sbt的工程中添加以下两个依赖。
 
+![9](./picture/9.PNG)
+
 ```
 "org.jmockit" % "jmockit" % "1.18"
 "de.leanovate.play-mockws" %% "play-mockws" % "2.6.2"
@@ -22,7 +24,7 @@ Jmockit有两种mock的方式：
 
 ## 三、实践
 
-### 1、模拟类
+### 1、模拟Service类
 
 Jmockit基本上有三个步骤：
 
@@ -45,7 +47,11 @@ new Mockup[类](){
 
 ```scala
 @Singleton
-class UserService @Inject()()(implicit ec: ExecutionContext) {
+class UserService @Inject()(
+  conf: Configuration,
+  userDao: UserDao,
+  wsClient: WSClient,
+  logUrlCache: AsyncCacheApi)(implicit ec: ExecutionContext) {
 
   def addUser(userId: String): Future[Boolean] = {
     userDao.insert(userId).map { res =>
@@ -88,12 +94,6 @@ object UserServiceMock {
 然后新建一个UserserviceTest，测试框架是[scalatest](http://www.scalatest.org/user_guide/selecting_a_style)，采用的风格是FunSuite。
 
 ```scala
-import base.BaseSuite
-import com.typesafe.config.ConfigFactory
-import dao.UserDao
-import mock.UserServiceMock
-import scala.concurrent.ExecutionContext.Implicits.global
-
 class UserServiceTest  extends BaseSuite {
 
   var userService: UserService  = null
@@ -103,8 +103,11 @@ class UserServiceTest  extends BaseSuite {
   }
 
   private def initService(): Unit = {
-  
-    userService = new UserService()  //
+    val configuration: Configuration = Configuration(ConfigFactory.load())
+    val userDao = fakeApp.injector.instanceOf(classOf[UserDao])
+    val ws = fakeApp.injector.instanceOf(classOf[WSClient])
+    val logUrlCache = fakeApp.injector.instanceOf(classOf[AsyncCacheApi])
+    userService = new UserService(configuration,userDao, ws,logUrlCache)  //
   }
   
   test("Userservice first mock example") {
@@ -133,6 +136,83 @@ Process finished with exit code 0
 
 ```
 
+### 2、在play框架下MOCK controller
+
+Controller类（简洁起见选取了一个方法）：
+
+```scala
+package controllers
+
+@Singleton
+class CrossMetaController @Inject()(
+ cc: ControllerComponents
+)(implicit exec: ExecutionContext) extends AbstractController(cc) {
+  def createCross(projectId: String) = Action.async {
+    request =>
+      val body = request.body.asJson.get
+      var roadName: Option[JsValue] = None
+      Json.fromJson[CrossMetaDataMin](body) match {
+        case JsSuccess(crossMetaDataMin: CrossMetaDataMin, _: JsPath) =>
+          for {
+            status <- crossMetaDao.create(crossMetaDataMin, roadName, userId) ?|
+              (ex => ResponseUtil.response(ex, ex.getMessage))
+          } yield {
+            ResponseUtil.ok
+          }
+        case e: JsError =>
+          val reason = s"Cross data creating failed: ${JsError.toJson(e).toString()}"
+          ServiceLog.logError(reason)
+          Future.successful(BadRequest(reason))
+      }
+  }
+}
+```
+
+基本的方式是一样的，创建一个mock类，然后Set Up并写入需要mock的方法
+
+CrossMetaMock
+
+```scala
+
+@Singleton
+object CrossMetaMock {
+
+  def setTestMode() = {
+    ServiceLog.logInfo("Mock CrossMetaController")
+    new MockUp[CrossMetaController]() {
+      @Mock
+      def createCross(projectId: String) = Action.async {
+        Future.successful(ResponseUtil.ok)
+      }
+    }
+  }
+
+}
+
+```
+
+重点是在测试方法中
+
+通过Helpers.fakeApplication()一行代码就能模拟出一个Application(Play中的Application你可以理解为类似于Spring的Context)。差不多三行代码就能对Controller进行测试. 
+
+```scala
+test("[CrossMetaControllerTest:Test01] create CrossMeta"){
+    val request = Helpers.fakeRequest("POST","/")
+    val body = Json.obj(
+      。。。。
+    )
+    var projectId = "1"
+    request.method("POST").uri("/v1.0/"+projectId+"/crosses").bodyJson(body).header("Content-Type",contentType)
+      .header("x-auth-token", xAuthToken)
+    val result = route(fakeApp,request)
+    val content = contentAsString(result)
+    val jsValue = Json.parse(content)
+    val status = (jsValue \ "is_success").as[Boolean]
+    assert(status == true,"添加失败（请检查数据库是否已经联通或已经执行过该操作）")
+  }
+```
 
 
-到这里，用Jmockit来进行mock类的例子就结束了，接下去在实际项目中可能还有其他的例子，等下回遇到时再继续添加。
+
+接下去在实际项目中可能还有其他的例子，等下回遇到时再继续添加。（未完待续）
+
